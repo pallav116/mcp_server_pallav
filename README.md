@@ -46,3 +46,49 @@ python main.py --query "async def" --path ./src
 
 This project is licensed under the MIT License — feel free to use and improve it!
 
+## Example Usage
+json
+{
+  "file_path": "example.txt",
+  "keyword": "function",
+  "max_results": 10,
+  "context_lines": 2
+}
+
+text
+
+
+## 5. Test File (test_files/example.txt)
+```txt
+# Sample Code File
+def calculate_total(items):
+    """Calculate total price of items"""
+    total = 0
+    for item in items:
+        total += item.price
+    return total
+
+def validate_user(user):
+    """Validate user data"""
+    if not user.email:
+        return False
+    if len(user.password) < 8:
+        return False
+    return True
+
+class UserManager:
+    def __init__(self):
+        self.users = []
+    
+    def add_user(self, user):
+        """Add a new user"""
+        if validate_user(user):
+            self.users.append(user)
+            return True
+        return False
+
+# Utility functions
+def format_date(date_string):
+    """Format date string"""
+    # Date formatting logic here
+    pass
