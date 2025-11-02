@@ -1,0 +1,9 @@
+mcp-file-search-server/
+├── src/
+│   ├── server.py
+│   └── __init__.py
+├── requirements.txt
+├── .env
+├── README.md
+└── test_files/
+    └── example.txt
