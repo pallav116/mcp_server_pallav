@@ -1,0 +1,150 @@
+#!/usr/bin/env python3
+import asyncio
+import os
+import re
+import aiofiles
+from typing import List, Dict, Any
+from mcp import MCPServer
+import mcp.types as types
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("file-search-server")
+
+class FileSearchServer:
+    def __init__(self):
+        self.server = MCPServer("file-search-server")
+        self._register_tools()
+        logger.info("FileSearchServer initialized")
+
+    def _register_tools(self):
+        @self.server.list_tools()
+        async def handle_list_tools() -> List[types.Tool]:
+            return [
+                types.Tool(
+                    name="search_file",
+                    description="Search for a specific keyword within a file and return matching lines with context",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "file_path": {"type": "string"},
+                            "keyword": {"type": "string"},
+                            "max_results": {"type": "number", "default": 50},
+                            "context_lines": {"type": "number", "default": 2}
+                        },
+                        "required": ["file_path", "keyword"]
+                    }
+                ),
+                types.Tool(
+                    name="search_directory",
+                    description="Search for keywords across multiple files in a directory",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "directory_path": {"type": "string"},
+                            "keyword": {"type": "string"},
+                            "file_pattern": {"type": "string", "default": "*"},
+                            "max_files": {"type": "number", "default": 100}
+                        },
+                        "required": ["directory_path", "keyword"]
+                    }
+                )
+            ]
+
+        @self.server.call_tool()
+        async def handle_call_tool(name: str, arguments: Dict[str, Any]) -> List[types.TextContent]:
+            try:
+                if name == "search_file":
+                    result = await self._search_file(**arguments)
+                    return [types.TextContent(type="text", text=result)]
+                elif name == "search_directory":
+                    result = await self._search_directory(**arguments)
+                    return [types.TextContent(type="text", text=result)]
+                else:
+                    raise ValueError(f"Unknown tool: {name}")
+            except Exception as e:
+                error_msg = f"Error executing tool {name}: {str(e)}"
+                logger.error(error_msg)
+                return [types.TextContent(type="text", text=error_msg)]
+
+    async def _search_file(self, file_path: str, keyword: str, max_results: int = 50, context_lines: int = 2) -> str:
+        logger.info(f"Searching for '{keyword}' in file: {file_path}")
+        if not os.path.exists(file_path):
+            return f"Error: File not found: {file_path}"
+        if not os.path.isfile(file_path):
+            return f"Error: Path is not a file: {file_path}"
+        try:
+            async with aiofiles.open(file_path, 'r', encoding='utf-8') as file:
+                content = await file.readlines()
+            matches = []
+            pattern = re.compile(re.escape(keyword), re.IGNORECASE)
+            for line_num, line in enumerate(content, 1):
+                if pattern.search(line):
+                    start_line = max(0, line_num - context_lines - 1)
+                    end_line = min(len(content), line_num + context_lines)
+                    context = []
+                    for ctx_num in range(start_line, end_line):
+                        prefix = ">>> " if ctx_num + 1 == line_num else "    "
+                        context.append(f"{prefix}Line {ctx_num + 1}: {content[ctx_num].rstrip()}")
+                    matches.append({'line_number': line_num, 'content': line.rstrip(), 'context': '\n'.join(context)})
+                    if len(matches) >= max_results:
+                        break
+            if not matches:
+                return f"No matches found for '{keyword}' in {file_path}"
+            result_lines = [f"Search Results for '{keyword}' in {file_path}", f"Found {len(matches)} matches:\n", "=" * 80]
+            for i, match in enumerate(matches, 1):
+                result_lines.extend([f"\nMatch {i}: Line {match['line_number']}", "-" * 40, match['context'], ""])
+            return '\n'.join(result_lines)
+        except Exception as e:
+            return f"Error reading file {file_path}: {str(e)}"
+
+    async def _search_directory(self, directory_path: str, keyword: str, file_pattern: str = "*", max_files: int = 100) -> str:
+        logger.info(f"Searching for '{keyword}' in directory: {directory_path}")
+        if not os.path.exists(directory_path):
+            return f"Error: Directory not found: {directory_path}"
+        if not os.path.isdir(directory_path):
+            return f"Error: Path is not a directory: {directory_path}"
+        try:
+            searched_files = 0
+            all_matches = []
+            for root, dirs, files in os.walk(directory_path):
+                for file in files:
+                    if searched_files >= max_files:
+                        break
+                    file_path = os.path.join(root, file)
+                    if file_pattern != "*" and not file.endswith(file_pattern.replace("*", "")):
+                        continue
+                    async with aiofiles.open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        content = await f.readlines()
+                    pattern = re.compile(re.escape(keyword), re.IGNORECASE)
+                    file_matches = []
+                    for line_num, line in enumerate(content, 1):
+                        if pattern.search(line):
+                            file_matches.append({'line_number': line_num, 'content': line.rstrip()})
+                    if file_matches:
+                        all_matches.append({'file_path': file_path, 'matches': file_matches})
+                    searched_files += 1
+            if not all_matches:
+                return f"No matches found for '{keyword}' in directory {directory_path}"
+            result_lines = [f"Directory Search Results for '{keyword}' in {directory_path}", f"Searched {searched_files} files, found matches in {len(all_matches)} files:\n", "=" * 80]
+            for file_result in all_matches:
+                result_lines.extend([f"\nFile: {file_result['file_path']}", f"Matches: {len(file_result['matches'])}", "-" * 40])
+                for match in file_result['matches']:
+                    result_lines.append(f"Line {match['line_number']}: {match['content']}")
+                result_lines.append("")
+            return '\n'.join(result_lines)
+        except Exception as e:
+            return f"Error searching directory {directory_path}: {str(e)}"
+
+    async def run(self):
+        logger.info("Starting MCP File Search Server...")
+        async with self.server.run() as session:
+            logger.info("MCP Server is running and ready for connections")
+            await session.wait_closed()
+
+async def main():
+    server = FileSearchServer()
+    await server.run()
+
+if __name__ == "__main__":
+    asyncio.run(main())
