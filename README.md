@@ -44,5 +44,5 @@ python main.py --query "async def" --path ./src
 
 ## License
 
-MIT License
+This project is licensed under the MIT License — feel free to use and improve it!
 
