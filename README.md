@@ -58,7 +58,7 @@ json
 text
 
 
-## 5. Test File (test_files/example.txt)
+## Test File (test_files/example.txt)
 ```txt
 # Sample Code File
 def calculate_total(items):
