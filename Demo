@@ -1,0 +1,13 @@
+## Sample Output
+Search Results for 'function' in example.py
+Found 3 matches:
+
+==============================================
+
+Match 1: Line 15
+----------------------------------------
+    Line 13: # Helper functions
+    Line 14: def calculate_total(items):
+>>> Line 15:     total = sum(item.price for item in items)
+    Line 16:     return total
+    Line 17: 
